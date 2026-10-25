@@ -870,7 +870,7 @@ export default function App() {
             <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-3 shadow-lg shadow-indigo-200 text-white">
               🐑
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-800">บ้านของเรา (คอมมูนิตี้แขวง)</h1>
+            <h1 className="text-2xl font-extrabold text-slate-800">BETEEN</h1>
             <p className="text-xs text-slate-500 mt-1">เลือกหน่วย กลุ่มเซลล์ และชื่อของคุณเพื่อเข้าใช้งาน</p>
           </div>
 
