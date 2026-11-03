@@ -1,111 +1,49 @@
+/* ============================================================================
+   ธีม Neo-pop: เส้นขอบดำ + เงาแข็ง + สีสด + ฟอนต์ Mitr
+   สีหลักตั้งใน tailwind.config (index.html) ไฟล์นี้ใส่เส้น/เงาให้ทั้งแอป
+   ============================================================================ */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+  --ink: #1a1a1a;
+  --cream: #fff7d6;
+  --lime: #c6f432;
+  --pop-shadow: 4px 4px 0 var(--ink);
+  color-scheme: light;
 }
 
 body {
   margin: 0;
+  font-family: 'Mitr', system-ui, sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+/* กล่อง/ปุ่มที่มีเงา → ขอบดำหนา + เงาแข็งเยื้อง */
+.shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl {
+  box-shadow: var(--pop-shadow) !important;
+  border: 2.5px solid var(--ink) !important;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+/* ปุ่มที่มีเงา กดแล้วยุบลงเหมือนปุ่มจริง */
+button.shadow-sm:active, button.shadow:active, button.shadow-md:active,
+a.shadow-sm:active, a.shadow-md:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--ink) !important;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+/* ช่องกรอก การ์ด และกล่องขอบเทาที่มีมุมมน → ขอบดำ */
+[class*="rounded"].border-slate-200,
+[class*="rounded"].border-slate-300,
+input[class*="border"], select[class*="border"], textarea[class*="border"] {
+  border-color: var(--ink) !important;
+  border-width: 2px !important;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
+/* ปุ่มหลัก: ดำ ตัวหนังสือเขียวมะนาว */
+.bg-indigo-600 { background-color: var(--ink) !important; }
+.bg-indigo-600.text-white, .bg-indigo-600 .text-white { color: var(--lime) !important; }
+.hover\:bg-indigo-700:hover { background-color: #3a3a3a !important; }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
-}
+/* ปุ่มที่กดไม่ได้ ไม่ต้องมีเงา */
+button:disabled { box-shadow: none !important; transform: none !important; }

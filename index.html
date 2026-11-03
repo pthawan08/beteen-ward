@@ -3,8 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fff7d6" />
     <title>ระบบคอมมูนิตี้ & ดูแลแขวง</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // ธีม Neo-pop: สีสดแบบวัยรุ่น (ชื่อคลาสเดิมใน App.jsx ใช้ต่อได้เลย)
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Mitr', 'system-ui', 'sans-serif'] },
+            colors: {
+              slate: { 50: '#fff7d6' },
+              indigo: { 50: '#f1ecff', 100: '#e4daff', 200: '#cdbbff', 500: '#7c5cff', 600: '#6d4aff', 700: '#5733f0', 800: '#3f1fc4', 900: '#2b1394', 950: '#1c0b66' },
+              emerald: { 50: '#f2fdd0', 100: '#e6fbaa', 500: '#8ad100', 600: '#3fae00', 700: '#2f8a00' },
+              pink: { 50: '#ffeaf5', 100: '#ffd3ea', 400: '#ff8fc7', 500: '#ff5fae' },
+              sky: { 50: '#e6f7ff', 200: '#a5e3ff', 400: '#7dd3fc' },
+              amber: { 100: '#fff3a6', 300: '#fde047', 400: '#ffcf33', 500: '#ffb800', 600: '#f09a00' },
+            },
+          },
+        },
+      };
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- LINE LIFF SDK -->
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>

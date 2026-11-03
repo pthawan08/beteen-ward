@@ -90,15 +90,16 @@ function RoleBadge({ role, showFull = false }) {
   );
 }
 
+// สีการ์ดแบบ Neo-pop: สีเรียบสด ตัวหนังสือดำ (ยกเว้น night)
 const CARD_THEMES = {
-  blue: "from-sky-400 to-indigo-500 text-white",
-  yellow: "from-amber-300 to-orange-400 text-slate-900",
-  pink: "from-pink-400 to-rose-500 text-white",
-  green: "from-emerald-400 to-teal-500 text-white",
-  purple: "from-violet-400 to-purple-600 text-white",
-  sunset: "from-orange-400 to-pink-500 text-white",
-  ocean: "from-cyan-400 to-blue-600 text-white",
-  night: "from-slate-700 to-indigo-900 text-white",
+  blue: "bg-[#7dd3fc] text-[#1a1a1a]",
+  yellow: "bg-[#fde047] text-[#1a1a1a]",
+  pink: "bg-[#ff8fc7] text-[#1a1a1a]",
+  green: "bg-[#c6f432] text-[#1a1a1a]",
+  purple: "bg-[#b9a3ff] text-[#1a1a1a]",
+  sunset: "bg-[#ffa66b] text-[#1a1a1a]",
+  ocean: "bg-[#5eead4] text-[#1a1a1a]",
+  night: "bg-[#1a1a1a] text-[#c6f432]",
 };
 
 const CARD_THEME_LABELS = {
@@ -146,6 +147,32 @@ const INITIAL_MOCK_DATA = {
   hbdWishes: []
 };
 
+const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+// แปลงวันเกิดที่พิมพ์ในชีตเองให้เป็น yyyy-mm-dd
+// รองรับ "8 พฤศจิกายน 1999", "8 พ.ย. 2542", "8/11/1999" (ปี พ.ศ. จะลบ 543 ให้)
+function parseBirthdate(value) {
+  const raw = String(value || '').trim();
+  if (!raw || /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  let day, month, year;
+  const numeric = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (numeric) {
+    [, day, month, year] = numeric.map(Number);
+  } else {
+    const m = raw.match(/^(\d{1,2})\s*(\S+?)\s*(\d{4})$/);
+    if (!m) return raw;
+    day = Number(m[1]);
+    const name = m[2].replace(/\s/g, '');
+    month = THAI_MONTHS.indexOf(name) + 1 || THAI_MONTHS_SHORT.indexOf(name) + 1 ||
+      THAI_MONTHS_SHORT.map(s => s.replace(/\./g, '')).indexOf(name.replace(/\./g, '')) + 1;
+    year = Number(m[3]);
+  }
+  if (year > 2400) year -= 543;
+  if (!month || month > 12 || !day || day > 31) return raw;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 // จัดระเบียบข้อมูลสมาชิกและสร้าง ID อัตโนมัติหากในชีตยังว่างอยู่
 function normalizeMembers(rawMembers = []) {
   let maxNum = 0;
@@ -159,12 +186,14 @@ function normalizeMembers(rawMembers = []) {
     .map(m => {
       const hasId = m.id && String(m.id).trim() !== '';
       const roleVal = m.role && String(m.role).trim() !== '' ? String(m.role).trim() : 'สช.';
+      const birthdate = parseBirthdate(m.birthdate);
       if (hasId) {
-        return { ...m, id: String(m.id).trim(), role: roleVal };
+        return { ...m, id: String(m.id).trim(), role: roleVal, birthdate };
       }
       maxNum += 1;
       return {
         ...m,
+        birthdate,
         id: 'M' + String(maxNum).padStart(3, '0'),
         role: roleVal,
         _missingSheetId: true,
@@ -233,7 +262,7 @@ function resizeImageFile(file, maxSize = 200, quality = 0.75) {
 function MemberCardPreview({ member }) {
   const theme = CARD_THEMES[member.card_theme] || CARD_THEMES.blue;
   return (
-    <div className={`relative overflow-hidden rounded-3xl p-5 shadow-lg bg-gradient-to-br ${theme}`}>
+    <div className={`relative overflow-hidden rounded-3xl p-5 shadow-lg ${theme}`}>
       {member.card_sticker && (
         <span className="absolute -right-2 -top-3 text-6xl opacity-90 rotate-12 select-none">{member.card_sticker}</span>
       )}
@@ -412,7 +441,7 @@ function ProfileWizard({ member, linePictureUrl, saving, onSave, onSkip }) {
                       key={key}
                       type="button"
                       onClick={() => update('card_theme', key)}
-                      className={`h-12 rounded-xl bg-gradient-to-br ${CARD_THEMES[key]} text-[10px] font-bold transition ${
+                      className={`h-12 rounded-xl border-2 border-[#1a1a1a] ${CARD_THEMES[key]} text-[10px] font-bold transition ${
                         form.card_theme === key ? 'ring-4 ring-indigo-600 ring-offset-2 scale-105' : 'opacity-80 hover:opacity-100'
                       }`}
                     >
@@ -1656,7 +1685,7 @@ export default function App() {
                     </div>
                   </button>
                 )}
-                <div className={`rounded-3xl p-6 sm:p-8 shadow-xl bg-gradient-to-br ${CARD_THEMES[currentUser.card_theme] || CARD_THEMES.blue} relative overflow-hidden`}>
+                <div className={`rounded-3xl p-6 sm:p-8 shadow-xl ${CARD_THEMES[currentUser.card_theme] || CARD_THEMES.blue} relative overflow-hidden`}>
                   {currentUser.card_sticker && (
                     <span className="absolute right-3 -top-2 text-7xl opacity-90 rotate-12 select-none pointer-events-none">{currentUser.card_sticker}</span>
                   )}
@@ -1678,7 +1707,7 @@ export default function App() {
                         <h2 className="text-2xl sm:text-3xl font-extrabold">
                           {currentUser.nickname} {formatFullName(currentUser) ? `(${formatFullName(currentUser)})` : ''}
                         </h2>
-                        <p className="text-sm opacity-90">รหัสสมาชิก: {currentUser.id} • เกิดวันที่: {currentUser.birthdate || '-'}</p>
+                        <p className="text-sm opacity-90">รหัสสมาชิก: {currentUser.id} • เกิดวันที่: {currentUser.birthdate ? formatThaiBirthday(currentUser.birthdate) : '-'}</p>
                       </div>
                     </div>
 
@@ -1982,7 +2011,7 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl">
-                        <div><strong>🎂 วันเกิด:</strong> {member.birthdate || '-'}</div>
+                        <div><strong>🎂 วันเกิด:</strong> {member.birthdate ? formatThaiBirthday(member.birthdate) : '-'}</div>
                         <div><strong>🍲 ของโปรด:</strong> {member.fav_food || '-'}</div>
                         <div><strong>🙏 อธิษฐานเผื่อ:</strong> {member.prayer_request || '-'}</div>
                         {isLeaderOrMentor(currentUser) && member.phone && (
@@ -2062,7 +2091,7 @@ export default function App() {
                         <AvatarDisplay avatar={member.avatar_url} nickname={member.nickname} sizeClass="w-14 h-14" roundedClass="rounded-2xl" />
                         <div>
                           <div className="font-extrabold text-slate-800 text-base">{member.nickname}</div>
-                          <div className="text-xs text-pink-600 font-semibold">เกิดวันที่: {member.birthdate}</div>
+                          <div className="text-xs text-pink-600 font-semibold">เกิดวันที่: {formatThaiBirthday(member.birthdate)}</div>
                           <div className="text-xs text-slate-500 mt-0.5">ของโปรด: {member.fav_food || '-'}</div>
                         </div>
                       </div>
@@ -2095,7 +2124,7 @@ export default function App() {
                     >
                       <option value="">-- กดเลือกชื่อเพื่อน/พี่น้องในแขวง --</option>
                       {db.members.map(m => (
-                        <option key={m.id} value={m.id}>{m.nickname} {m.birthdate ? `(เกิด ${m.birthdate})` : ''}</option>
+                        <option key={m.id} value={m.id}>{m.nickname} {m.birthdate ? `(เกิด ${formatThaiBirthday(m.birthdate)})` : ''}</option>
                       ))}
                     </select>
                   </div>
@@ -2289,7 +2318,7 @@ export default function App() {
                       .filter(l => l.member_id === sheep.id)
                       .sort((a, b) => new Date(b.date) - new Date(a.date));
                     const taughtLessons = [...new Set(logs.map(l => l.lesson_id).filter(Boolean))];
-                    const totalLessons = allLessons.length || 1;
+                    const totalLessons = LESSON_BOOK.chapters.length;
                     const progressPct = Math.min(100, Math.round((taughtLessons.length / totalLessons) * 100));
                     const lastLog = logs[0];
 
