@@ -1,9 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { LESSON_BOOK } from './lessonBook.js';
+
+// โหลดตัวอ่าน PDF เฉพาะตอนกดอ่าน (ไม่ให้หน้าแรกโหลดช้า)
+const ChapterReader = lazy(() => import('./ChapterReader.jsx'));
+
+// รวม 52 บทจากหนังสือ กับบทเรียนในชีต Lessons
+// แถวในชีตที่ book_name ตรงกับหนังสือ + chapter_no ตรงกัน จะเติมสรุป/Tips ให้บทนั้น
+function buildLessonList(sheetLessons) {
+  const used = new Set();
+  const bookLessons = LESSON_BOOK.chapters.map(ch => {
+    const match = sheetLessons.find(l =>
+      String(l.book_name || '').trim() === LESSON_BOOK.book_name &&
+      Number(l.chapter_no) === ch.chapter
+    );
+    if (match) used.add(match.lesson_id);
+    return {
+      lesson_id: match?.lesson_id || `B52-${String(ch.chapter).padStart(2, '0')}`,
+      book_name: LESSON_BOOK.book_name,
+      chapter_no: String(ch.chapter),
+      title: ch.title,
+      summary: match?.summary || '',
+      mentor_tips: match?.mentor_tips || '',
+      pdf_url: LESSON_BOOK.pdf_url,
+      startPage: ch.startPage,
+      endPage: ch.endPage,
+    };
+  });
+  const extraLessons = sheetLessons.filter(l => !used.has(l.lesson_id));
+  return [...bookLessons, ...extraLessons];
+}
 
 // ============================================================================
 // 🔗 นำ URL ที่ได้จากการ Deploy Google Apps Script (/exec) มาวางตรงนี้ค่ะ
 // ============================================================================
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyxF8L7G5D9rmZR7PVeR3B4yQbULzAzQG0Dfo1aCQdj-FWqueb5cnelpCnKuTBEk04dpw/exec";
+
+// 🟢 LIFF ID จาก LINE Developers Console (LIFF app ต้องเปิด scope "openid" และ "profile")
+const LIFF_ID = "PUT_YOUR_LIFF_ID_HERE";
+const isLiffConfigured = !!LIFF_ID && LIFF_ID !== "PUT_YOUR_LIFF_ID_HERE";
 
 const PREFIX_OPTIONS = ['นาย', 'นางสาว', 'นาง', 'ด.ช.', 'ด.ญ.'];
 
@@ -62,7 +96,27 @@ const CARD_THEMES = {
   pink: "from-pink-400 to-rose-500 text-white",
   green: "from-emerald-400 to-teal-500 text-white",
   purple: "from-violet-400 to-purple-600 text-white",
+  sunset: "from-orange-400 to-pink-500 text-white",
+  ocean: "from-cyan-400 to-blue-600 text-white",
+  night: "from-slate-700 to-indigo-900 text-white",
 };
+
+const CARD_THEME_LABELS = {
+  blue: 'ฟ้าคราม', yellow: 'เหลืองส้ม', pink: 'ชมพูพาสเทล', green: 'เขียวมิ้นต์',
+  purple: 'ม่วงลาเวนเดอร์', sunset: 'พระอาทิตย์ตก', ocean: 'ทะเลลึก', night: 'ฟ้ายามค่ำ',
+};
+
+// สติกเกอร์ประจำการ์ด (เก็บในคอลัมน์ card_sticker ถ้ามีในชีต Members)
+const CARD_STICKERS = ['🐑', '🌻', '🎵', '☕', '📖', '⚽', '🎨', '🌈', '🔥', '🙏', '💖', '⭐'];
+
+// ช่องที่ใช้คิด % ความครบของโปรไฟล์
+const PROFILE_FIELDS = ['nickname', 'birthdate', 'phone', 'avatar_url', 'fav_food', 'prayer_request'];
+
+function getProfileCompletion(member) {
+  if (!member) return 0;
+  const filled = PROFILE_FIELDS.filter(f => String(member[f] || '').trim() !== '').length;
+  return Math.round((filled / PROFILE_FIELDS.length) * 100);
+}
 
 const HBD_STICKERS = [
   { id: 'cake', emoji: '🎂', label: 'เค้กวันเกิด' },
@@ -175,6 +229,254 @@ function resizeImageFile(file, maxSize = 200, quality = 0.75) {
   });
 }
 
+// การ์ดประจำตัวสมาชิก (ใช้ทั้งตอนแต่งการ์ดและแสดงผล)
+function MemberCardPreview({ member }) {
+  const theme = CARD_THEMES[member.card_theme] || CARD_THEMES.blue;
+  return (
+    <div className={`relative overflow-hidden rounded-3xl p-5 shadow-lg bg-gradient-to-br ${theme}`}>
+      {member.card_sticker && (
+        <span className="absolute -right-2 -top-3 text-6xl opacity-90 rotate-12 select-none">{member.card_sticker}</span>
+      )}
+      <div className="flex items-center gap-4">
+        <AvatarDisplay avatar={member.avatar_url} nickname={member.nickname} sizeClass="w-20 h-20" roundedClass="rounded-2xl" />
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-black/15 inline-block mb-1">
+            {member.unit || '-'} • {member.cell_group || '-'}
+          </div>
+          <h3 className="text-2xl font-extrabold leading-tight truncate">{member.nickname || 'ชื่อเล่นของคุณ'}</h3>
+          <p className="text-xs opacity-90">🎂 {member.birthdate ? formatThaiBirthday(member.birthdate) : 'วันเกิด ?'}</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+        <div className="bg-black/15 rounded-xl p-2.5">
+          <div className="opacity-80">🍲 เมนูโปรด</div>
+          <div className="font-bold truncate">{member.fav_food || '...'}</div>
+        </div>
+        <div className="bg-black/15 rounded-xl p-2.5">
+          <div className="opacity-80">🙏 อธิษฐานเผื่อ</div>
+          <div className="font-bold truncate">{member.prayer_request || '...'}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+function formatThaiBirthday(dateStr) {
+  const [, m, d] = String(dateStr).split('-').map(Number);
+  if (!m || !d) return dateStr;
+  return `${d} ${THAI_MONTHS[m - 1]}`;
+}
+
+// กรอกข้อมูลและแต่งการ์ดทีละขั้น (เปิดอัตโนมัติเมื่อโปรไฟล์ยังไม่ครบ)
+function ProfileWizard({ member, linePictureUrl, saving, onSave, onSkip }) {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({
+    prefix: member.prefix || '',
+    nickname: member.nickname || '',
+    fullname: member.fullname || '',
+    birthdate: member.birthdate || '',
+    phone: member.phone || '',
+    avatar_url: member.avatar_url || '',
+    card_theme: member.card_theme || 'blue',
+    card_sticker: member.card_sticker || '',
+    fav_food: member.fav_food || '',
+    prayer_request: member.prayer_request || '',
+  });
+  const [error, setError] = useState('');
+  const [loadingPhoto, setLoadingPhoto] = useState(false);
+
+  const update = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    setError('');
+  };
+
+  const handlePhoto = async (fileOrBlob) => {
+    setLoadingPhoto(true);
+    try {
+      update('avatar_url', await resizeImageFile(fileOrBlob));
+    } catch {
+      setError('อ่านรูปไม่ได้ ลองเลือกรูปอื่นนะ');
+    } finally {
+      setLoadingPhoto(false);
+    }
+  };
+
+  const applyLinePhoto = async () => {
+    try {
+      const res = await fetch(linePictureUrl);
+      await handlePhoto(await res.blob());
+    } catch {
+      setError('ดึงรูปจาก LINE ไม่ได้ ลองอัปรูปจากเครื่องแทนนะ');
+    }
+  };
+
+  const steps = [
+    { title: 'มาทำความรู้จักกัน', hint: 'ข้อมูลนี้ช่วยให้พี่ๆ เพื่อนๆ ในแขวงรู้จักและอวยพรวันเกิดคุณได้' },
+    { title: 'แต่งการ์ดของฉัน', hint: 'เลือกรูป สี และสติกเกอร์ที่เป็นตัวคุณ' },
+    { title: 'เรื่องของฉัน', hint: 'ให้เพื่อนๆ รู้ว่าชอบกินอะไร และอธิษฐานเผื่อเรื่องอะไรดี' },
+  ];
+  const isLast = step === steps.length - 1;
+
+  const next = () => {
+    if (step === 0 && !form.nickname.trim()) {
+      setError('ใส่ชื่อเล่นก่อนนะ');
+      return;
+    }
+    if (isLast) {
+      onSave(form);
+    } else {
+      setStep(step + 1);
+    }
+  };
+
+  const inputClass = "w-full px-3.5 py-3 bg-white text-slate-800 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none";
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-sky-50 via-indigo-50 to-purple-50 overflow-y-auto">
+      <div className="max-w-md mx-auto min-h-full flex flex-col p-5 text-left">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex gap-1.5 flex-1 mr-4">
+            {steps.map((_, i) => (
+              <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+            ))}
+          </div>
+          <button type="button" onClick={onSkip} className="text-xs font-semibold text-slate-500 hover:text-slate-700">
+            ข้ามไปก่อน
+          </button>
+        </div>
+        <p className="text-xs text-slate-500">ขั้นที่ {step + 1} จาก {steps.length}</p>
+        <h2 className="text-2xl font-extrabold text-slate-800">{steps[step].title}</h2>
+        <p className="text-sm text-slate-500 mb-4">{steps[step].hint}</p>
+
+        {step > 0 && (
+          <div className="mb-5">
+            <MemberCardPreview member={{ ...member, ...form }} />
+          </div>
+        )}
+
+        <div className="space-y-4 flex-1">
+          {step === 0 && (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">คำนำหน้า</label>
+                  <select value={form.prefix} onChange={e => update('prefix', e.target.value)} className={inputClass}>
+                    <option value="">-</option>
+                    {PREFIX_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-slate-600 mb-1">ชื่อเล่น *</label>
+                  <input value={form.nickname} onChange={e => update('nickname', e.target.value)} placeholder="มายด์" className={inputClass} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">ชื่อ-นามสกุล</label>
+                <input value={form.fullname} onChange={e => update('fullname', e.target.value)} placeholder="อธิษฐาน คำบุญ" className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">🎂 วันเกิด</label>
+                <input type="date" value={form.birthdate} onChange={e => update('birthdate', e.target.value)} className={inputClass} />
+                <p className="text-[11px] text-slate-400 mt-1">ใส่ไว้แล้วเพื่อนๆ จะเห็นบนบอร์ดวันเกิดของเดือนนั้น</p>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">📞 เบอร์โทร</label>
+                <input type="tel" inputMode="tel" value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="081-234-5678" className={inputClass} />
+              </div>
+            </>
+          )}
+
+          {step === 1 && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-2">📸 รูปโปรไฟล์</label>
+                <div className="flex gap-2">
+                  <label className="flex-1 py-3 text-center bg-white border border-slate-200 hover:border-indigo-400 rounded-xl text-sm font-bold text-indigo-700 cursor-pointer transition">
+                    {loadingPhoto ? 'กำลังย่อรูป...' : 'เลือกรูปจากเครื่อง'}
+                    <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handlePhoto(e.target.files[0])} />
+                  </label>
+                  {linePictureUrl && (
+                    <button type="button" onClick={applyLinePhoto} className="flex-1 py-3 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl text-sm font-bold text-emerald-700 transition">
+                      ใช้รูปจาก LINE
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-2">🎨 สีการ์ด</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {Object.keys(CARD_THEMES).map(key => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => update('card_theme', key)}
+                      className={`h-12 rounded-xl bg-gradient-to-br ${CARD_THEMES[key]} text-[10px] font-bold transition ${
+                        form.card_theme === key ? 'ring-4 ring-indigo-600 ring-offset-2 scale-105' : 'opacity-80 hover:opacity-100'
+                      }`}
+                    >
+                      {CARD_THEME_LABELS[key]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-2">✨ สติกเกอร์ประจำตัว</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {CARD_STICKERS.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => update('card_sticker', form.card_sticker === s ? '' : s)}
+                      className={`h-11 rounded-xl text-2xl bg-white border transition ${
+                        form.card_sticker === s ? 'border-indigo-600 ring-2 ring-indigo-600' : 'border-slate-200 hover:border-indigo-300'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">🍲 เมนูโปรด / คาเฟ่ที่ชอบ</label>
+                <input value={form.fav_food} onChange={e => update('fav_food', e.target.value)} placeholder="ชาบู, ชาไทยหวานน้อย" className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">🙏 อยากให้อธิษฐานเผื่อเรื่องอะไร</label>
+                <textarea rows={3} value={form.prayer_request} onChange={e => update('prayer_request', e.target.value)} placeholder="ขอให้สอบผ่าน และครอบครัวแข็งแรง" className={inputClass} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {error && <p className="text-sm text-rose-600 font-semibold mt-3">{error}</p>}
+
+        <div className="flex gap-2 mt-6 pb-2">
+          {step > 0 && (
+            <button type="button" onClick={() => setStep(step - 1)} className="px-5 py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl text-sm">
+              ย้อนกลับ
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={next}
+            disabled={saving || loadingPhoto}
+            className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition text-sm"
+          >
+            {saving ? 'กำลังบันทึก...' : isLast ? '💾 บันทึกการ์ดของฉัน' : 'ถัดไป'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [db, setDb] = useState(INITIAL_MOCK_DATA);
   const [loading, setLoading] = useState(false);
@@ -191,9 +493,18 @@ export default function App() {
   const [selCell, setSelCell] = useState('');
   const [selMemberId, setSelMemberId] = useState('');
 
+  // LINE Login (LIFF): lineStatus = 'off' | 'bound' | 'notBound'
+  const [lineIdToken, setLineIdToken] = useState('');
+  const [lineProfile, setLineProfile] = useState(null);
+  const [lineStatus, setLineStatus] = useState('off');
+
   // Profile & Directory States
   const [quote, setQuote] = useState(DAILY_QUOTES[0]);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardDismissedFor, setWizardDismissedFor] = useState(() => {
+    try { return sessionStorage.getItem('ward_wizard_dismissed') || ''; } catch { return ''; }
+  });
   const [editForm, setEditForm] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [cellFilter, setCellFilter] = useState('ALL');
@@ -228,7 +539,16 @@ export default function App() {
   });
   const [showAddLessonModal, setShowAddLessonModal] = useState(false);
   const [newLessonForm, setNewLessonForm] = useState({
-    book_name: 'บทเรียนติดตามผล 52 สัปดาห์', chapter_no: '', title: '', summary: '', pdf_url: '/lesson52.pdf', mentor_tips: ''
+    book_name: LESSON_BOOK.book_name, chapter_no: '', title: '', summary: '', pdf_url: '/lesson52.pdf', mentor_tips: ''
+  });
+  const [lessonSearch, setLessonSearch] = useState('');
+  const [readingLesson, setReadingLesson] = useState(null);
+
+  const allLessons = useMemo(() => buildLessonList(db.lessons || []), [db.lessons]);
+  const filteredLessons = allLessons.filter(l => {
+    const q = lessonSearch.trim();
+    if (!q) return true;
+    return String(l.chapter_no) === q || String(l.title).includes(q) || String(l.summary || '').includes(q);
   });
 
   const isDemoMode = !GAS_URL || GAS_URL === "PUT_YOUR_GAS_WEB_APP_URL_HERE";
@@ -240,7 +560,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isDemoMode) {
-      fetchAllData(true);
+      (async () => {
+        setLoading(true);
+        const usedLine = await initLineLogin();
+        fetchAllData(!usedLine);
+      })();
     } else {
       const savedId = localStorage.getItem('ward_saved_user_id');
       if (savedId) {
@@ -252,6 +576,60 @@ export default function App() {
       }
     }
   }, []);
+
+  const callGasAction = async (body) => {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  };
+
+  // เปิดจาก LINE: ตรวจ token ที่ GAS แล้วเข้าสู่ระบบอัตโนมัติ / หรือพาไปหน้าผูกบัญชี
+  // คืนค่า true เมื่อใช้ LINE เป็นตัวยืนยันตัวตน (ไม่ต้องใช้ session ที่จำไว้ในเครื่อง)
+  const initLineLogin = async () => {
+    if (!isLiffConfigured || !window.liff) return false;
+    try {
+      await window.liff.init({ liffId: LIFF_ID });
+      if (!window.liff.isLoggedIn()) return false;
+      const idToken = window.liff.getIDToken();
+      if (!idToken) return false;
+      setLineIdToken(idToken);
+      window.liff.getProfile().then(setLineProfile).catch(() => {});
+
+      const json = await callGasAction({ action: 'lineLogin', idToken });
+      if (json.status === 'success' && json.member) {
+        setLineStatus('bound');
+        completeLogin(normalizeMembers([json.member])[0]);
+        return true;
+      }
+      if (json.status === 'notBound') {
+        setLineStatus('notBound');
+        localStorage.removeItem('ward_saved_user_id');
+        localStorage.removeItem('ward_saved_user_fullname');
+        return true;
+      }
+      throw new Error(json.message);
+    } catch (err) {
+      console.error(err);
+      showToast('เข้าสู่ระบบด้วย LINE ไม่สำเร็จ: ' + err.message, 'error');
+      return false;
+    }
+  };
+
+  const bindLineAccount = async (memberId) => {
+    try {
+      const json = await callGasAction({ action: 'bindLine', idToken: lineIdToken, memberId });
+      if (json.status !== 'success') throw new Error(json.message);
+      setLineStatus('bound');
+      return true;
+    } catch (err) {
+      console.error(err);
+      showToast('ผูกบัญชี LINE ไม่สำเร็จ: ' + err.message, 'error');
+      return false;
+    }
+  };
 
   const fetchAllData = async (checkSavedSession = false) => {
     setLoading(true);
@@ -392,15 +770,7 @@ export default function App() {
     }
 
     const activeMember = { ...found, _missingSheetId: false };
-    localStorage.setItem('ward_saved_user_id', activeMember.id);
-    if (activeMember.fullname) {
-      localStorage.setItem('ward_saved_user_fullname', activeMember.fullname);
-    }
-
-    setCurrentUser(activeMember);
-    setIsLoggedIn(true);
-    setActiveTab('profile');
-    showToast(`ยินดีต้อนรับ ${activeMember.nickname} (${getRoleInfo(activeMember.role).label}) 🎉`);
+    const needsLineBind = lineStatus === 'notBound' && !!lineIdToken;
 
     if (found._missingSheetId) {
       const matchCol = found.fullname ? 'fullname' : 'nickname';
@@ -408,8 +778,69 @@ export default function App() {
         ...prev,
         members: prev.members.map(m => m.id === found.id ? activeMember : m)
       }));
-      await postToGAS('update', 'Members', activeMember, matchCol, true);
+      // ต้องมี id ในชีตก่อน ถึงจะผูก LINE กับแถวนี้ได้
+      const saved = await postToGAS('update', 'Members', activeMember, matchCol, true);
+      if (!saved && needsLineBind) {
+        showToast('บันทึกรหัสสมาชิกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error');
+        return;
+      }
     }
+
+    if (needsLineBind) {
+      setSyncing(true);
+      const bound = await bindLineAccount(activeMember.id);
+      setSyncing(false);
+      if (!bound) return;
+    }
+
+    completeLogin(activeMember);
+  };
+
+  const completeLogin = (member) => {
+    localStorage.setItem('ward_saved_user_id', member.id);
+    if (member.fullname) {
+      localStorage.setItem('ward_saved_user_fullname', member.fullname);
+    }
+    setCurrentUser(member);
+    setIsLoggedIn(true);
+    setActiveTab('profile');
+    showToast(`ยินดีต้อนรับ ${member.nickname} (${getRoleInfo(member.role).label}) 🎉`);
+  };
+
+  // เปิดหน้ากรอกข้อมูลอัตโนมัติถ้ายังไม่มีวันเกิดหรือรูป (ข้ามได้ จะไม่ถามซ้ำจนกว่าจะเปิดแอปใหม่)
+  const needsProfileSetup = !!currentUser && (!currentUser.birthdate || !currentUser.avatar_url);
+  const isWizardOpen = isLoggedIn && !!currentUser && (
+    showWizard || (needsProfileSetup && wizardDismissedFor !== currentUser.id)
+  );
+
+  const closeWizard = () => {
+    setShowWizard(false);
+    setWizardDismissedFor(currentUser.id);
+    try { sessionStorage.setItem('ward_wizard_dismissed', currentUser.id); } catch { /* ไม่มี storage ก็ไม่เป็นไร */ }
+  };
+
+  const handleWizardSave = async (fields) => {
+    const updatedUser = { ...currentUser, ...fields, role: currentUser.role, _missingSheetId: false };
+    const keyCol = currentUser._missingSheetId
+      ? (currentUser.fullname ? 'fullname' : 'nickname')
+      : 'id';
+    setSyncing(true);
+    const saved = await postToGAS('update', 'Members', updatedUser, keyCol, true);
+    setSyncing(false);
+    if (!saved) {
+      showToast('บันทึกไม่สำเร็จ ลองกดบันทึกอีกครั้งนะ', 'error');
+      return;
+    }
+    setCurrentUser(updatedUser);
+    if (updatedUser.fullname) {
+      localStorage.setItem('ward_saved_user_fullname', updatedUser.fullname);
+    }
+    setDb(prev => ({
+      ...prev,
+      members: prev.members.map(m => m.id === updatedUser.id ? updatedUser : m)
+    }));
+    closeWizard();
+    showToast('บันทึกการ์ดของคุณแล้ว สวยมาก! 🎉');
   };
 
   const handleLogout = () => {
@@ -496,7 +927,11 @@ export default function App() {
       setIsLoggedIn(true);
     }
 
-    await postToGAS('insert', 'Members', memberObj);
+    const inserted = await postToGAS('insert', 'Members', memberObj);
+    // ลงทะเบียนใหม่จากใน LINE: ผูกบัญชี LINE กับแถวที่เพิ่งสร้าง
+    if (inserted && !isLoggedIn && lineStatus === 'notBound' && lineIdToken) {
+      await bindLineAccount(memberObj.id);
+    }
   };
 
   const handleCreateLesson = async (e) => {
@@ -509,7 +944,7 @@ export default function App() {
     setDb(prev => ({ ...prev, lessons: [...prev.lessons, lessonObj] }));
     setShowAddLessonModal(false);
     setNewLessonForm({
-      book_name: 'บทเรียนติดตามผล 52 สัปดาห์', chapter_no: '', title: '', summary: '', pdf_url: '/lesson52.pdf', mentor_tips: ''
+      book_name: LESSON_BOOK.book_name, chapter_no: '', title: '', summary: '', pdf_url: '/lesson52.pdf', mentor_tips: ''
     });
     await postToGAS('insert', 'Lessons', lessonObj);
   };
@@ -874,6 +1309,20 @@ export default function App() {
             <p className="text-xs text-slate-500 mt-1">เลือกหน่วย กลุ่มเซลล์ และชื่อของคุณเพื่อเข้าใช้งาน</p>
           </div>
 
+          {lineStatus === 'notBound' && !loading && (
+            <div className="mb-5 flex items-center gap-3 p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
+              {lineProfile?.pictureUrl ? (
+                <img src={lineProfile.pictureUrl} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-white shadow" />
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-emerald-500 text-white flex items-center justify-center font-extrabold text-xs">LINE</div>
+              )}
+              <div className="text-xs text-emerald-800">
+                <p className="font-bold">สวัสดี {lineProfile?.displayName || 'สมาชิกใหม่'} 👋</p>
+                <p>เข้าใช้งานครั้งแรก เลือกชื่อของคุณด้านล่างเพื่อผูกกับบัญชี LINE นี้ ครั้งต่อไปจะเข้าสู่ระบบอัตโนมัติ</p>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="py-10 text-center text-sm text-indigo-600 font-semibold animate-pulse">
               กำลังโหลดรายชื่อสมาชิกจากฐานข้อมูลแขวง...
@@ -938,10 +1387,12 @@ export default function App() {
 
               <button
                 type="submit"
-                disabled={!selMemberId}
-                className="w-full py-3.5 mt-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition text-sm"
+                disabled={!selMemberId || syncing}
+                className={`w-full py-3.5 mt-2 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition text-sm ${
+                  lineStatus === 'notBound' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
               >
-                เข้าสู่ระบบ
+                {syncing ? 'กำลังผูกบัญชี LINE...' : lineStatus === 'notBound' ? 'ผูกบัญชี LINE และเข้าสู่ระบบ' : 'เข้าสู่ระบบ'}
               </button>
             </form>
           )}
@@ -966,6 +1417,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-20">
       {renderAddMemberModal()}
+
+      {isWizardOpen && (
+        <ProfileWizard
+          key={currentUser.id}
+          member={currentUser}
+          linePictureUrl={lineProfile?.pictureUrl}
+          saving={syncing}
+          onSave={handleWizardSave}
+          onSkip={closeWizard}
+        />
+      )}
 
       {/* Modal เพิ่มบทเรียนใหม่ */}
       {showAddLessonModal && (
@@ -1063,6 +1525,30 @@ export default function App() {
         </div>
       )}
 
+      {readingLesson && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-slate-900/90 flex items-center justify-center text-white text-sm font-semibold">กำลังเปิดหนังสือ...</div>}>
+          <ChapterReader
+            key={`${readingLesson.lesson_id}-${readingLesson.startPage}`}
+            pdfUrl={readingLesson.pdf_url}
+            label={readingLesson.label}
+            title={readingLesson.title}
+            startPage={readingLesson.startPage}
+            endPage={readingLesson.endPage}
+            onClose={() => setReadingLesson(null)}
+            onMarkTaught={readingLesson.lesson_id ? () => {
+              setCareForm(prev => ({
+                ...prev,
+                lesson_id: readingLesson.lesson_id,
+                activities: prev.activities.includes('สอนบทเรียน') ? prev.activities : [...prev.activities, 'สอนบทเรียน']
+              }));
+              setReadingLesson(null);
+              setActiveTab('care');
+              showToast(`เลือก "${readingLesson.title}" เตรียมบันทึกการดูแลแล้ว`);
+            } : undefined}
+          />
+        </Suspense>
+      )}
+
       {/* Top Navigation */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -1155,7 +1641,25 @@ export default function App() {
           <div className="space-y-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
+                {getProfileCompletion(currentUser) < 100 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWizard(true)}
+                    className="w-full mb-4 p-4 bg-white rounded-2xl border border-indigo-100 shadow-sm text-left hover:border-indigo-300 transition"
+                  >
+                    <div className="flex justify-between text-sm font-bold text-slate-700 mb-1.5">
+                      <span>✨ โปรไฟล์ของคุณครบ {getProfileCompletion(currentUser)}%</span>
+                      <span className="text-indigo-600">กรอกต่อ ➔</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${getProfileCompletion(currentUser)}%` }} />
+                    </div>
+                  </button>
+                )}
                 <div className={`rounded-3xl p-6 sm:p-8 shadow-xl bg-gradient-to-br ${CARD_THEMES[currentUser.card_theme] || CARD_THEMES.blue} relative overflow-hidden`}>
+                  {currentUser.card_sticker && (
+                    <span className="absolute right-3 -top-2 text-7xl opacity-90 rotate-12 select-none pointer-events-none">{currentUser.card_sticker}</span>
+                  )}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/25 pb-5">
                     <div className="flex items-center gap-4">
                       <AvatarDisplay
@@ -1178,6 +1682,14 @@ export default function App() {
                       </div>
                     </div>
 
+                    <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowWizard(true)}
+                      className="px-4 py-2 rounded-xl bg-white/90 text-slate-800 hover:bg-white text-xs font-bold shadow transition"
+                    >
+                      🎨 แต่งการ์ด
+                    </button>
                     <button
                       onClick={() => {
                         setEditForm({
@@ -1196,10 +1708,11 @@ export default function App() {
                         });
                         setIsEditingProfile(!isEditingProfile);
                       }}
-                      className="px-4 py-2 rounded-xl bg-white/90 text-slate-800 hover:bg-white text-xs font-bold shadow transition shrink-0"
+                      className="px-4 py-2 rounded-xl bg-white/90 text-slate-800 hover:bg-white text-xs font-bold shadow transition"
                     >
-                      {isEditingProfile ? '✖ ยกเลิก' : '✏️ แต่งการ์ด / แก้โปรไฟล์'}
+                      {isEditingProfile ? '✖ ยกเลิก' : '✏️ แก้ข้อมูลทั้งหมด'}
                     </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
@@ -1315,6 +1828,9 @@ export default function App() {
                           <option value="pink">ชมพูพาสเทล (Sweet Pink)</option>
                           <option value="green">เขียวมิ้นต์ (Fresh Green)</option>
                           <option value="purple">ม่วงลาเวนเดอร์ (Royal Purple)</option>
+                          <option value="sunset">พระอาทิตย์ตก (Sunset)</option>
+                          <option value="ocean">ทะเลลึก (Ocean)</option>
+                          <option value="night">ฟ้ายามค่ำ (Night)</option>
                         </select>
                       </div>
                       <div>
@@ -1773,7 +2289,7 @@ export default function App() {
                       .filter(l => l.member_id === sheep.id)
                       .sort((a, b) => new Date(b.date) - new Date(a.date));
                     const taughtLessons = [...new Set(logs.map(l => l.lesson_id).filter(Boolean))];
-                    const totalLessons = db.lessons.length || 1;
+                    const totalLessons = allLessons.length || 1;
                     const progressPct = Math.min(100, Math.round((taughtLessons.length / totalLessons) * 100));
                     const lastLog = logs[0];
 
@@ -1899,7 +2415,7 @@ export default function App() {
                     className="w-full px-3 py-2 bg-white text-slate-800 border border-slate-200 rounded-xl text-sm"
                   >
                     <option value="">-- ไม่ได้สอนบทเรียนในครั้งนี้ --</option>
-                    {db.lessons.map(l => (
+                    {allLessons.map(l => (
                       <option key={l.lesson_id} value={l.lesson_id}>
                         บทที่ {l.chapter_no}: {l.title}
                       </option>
@@ -1964,7 +2480,7 @@ export default function App() {
                     .map(log => {
                       const sheep = db.members.find(m => m.id === log.member_id);
                       const mentor = db.members.find(m => m.id === log.mentor_id);
-                      const lesson = db.lessons.find(ls => ls.lesson_id === log.lesson_id);
+                      const lesson = allLessons.find(ls => ls.lesson_id === log.lesson_id);
 
                       return (
                         <div key={log.log_id} className="p-4 rounded-2xl border border-slate-200 hover:border-emerald-300 transition bg-slate-50/50">
@@ -2034,62 +2550,79 @@ export default function App() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {db.lessons.map(lesson => (
-                <div key={lesson.lesson_id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800">
-                        {lesson.book_name} • บทที่ {lesson.chapter_no}
+            <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200 text-left">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-lg">📖 {LESSON_BOOK.book_name}</h3>
+                  <p className="text-xs text-slate-500">กดที่บทเพื่ออ่านเฉพาะหน้าของบทนั้น ปัดซ้าย-ขวาเพื่อเปลี่ยนหน้า</p>
+                </div>
+                <input
+                  type="search"
+                  value={lessonSearch}
+                  onChange={e => setLessonSearch(e.target.value)}
+                  placeholder="ค้นหา เช่น อธิษฐาน หรือ 12"
+                  className="w-full sm:w-64 px-3.5 py-2.5 bg-slate-50 text-slate-800 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-400 outline-none"
+                />
+              </div>
+
+              {!lessonSearch.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setReadingLesson({ ...LESSON_BOOK.intro, lesson_id: '', pdf_url: LESSON_BOOK.pdf_url, label: 'ก่อนเริ่มบทที่ 1' })}
+                  className="w-full mb-2 flex items-center gap-3 p-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-left transition"
+                >
+                  <span className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">💡</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-bold text-sm text-indigo-900">{LESSON_BOOK.intro.title}</span>
+                    <span className="block text-[11px] text-indigo-600">อ่านก่อนเริ่มดูแลน้อง • {LESSON_BOOK.intro.endPage - LESSON_BOOK.intro.startPage + 1} หน้า</span>
+                  </span>
+                </button>
+              )}
+
+              <div className="divide-y divide-slate-100">
+                {filteredLessons.map(lesson => (
+                  <div key={lesson.lesson_id} className="py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 font-extrabold text-sm flex items-center justify-center shrink-0">
+                        {lesson.chapter_no || '•'}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono">{lesson.lesson_id}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-slate-800 leading-snug">{lesson.title}</p>
+                        <p className="text-[11px] text-slate-500">
+                          {lesson.startPage ? `${lesson.endPage - lesson.startPage + 1} หน้า` : lesson.book_name}
+                          {(lesson.summary || lesson.mentor_tips) && <span className="ml-2 text-indigo-600 font-semibold">• มีสรุป/Tips</span>}
+                        </p>
+                      </div>
+                      {lesson.pdf_url && (
+                        <button
+                          type="button"
+                          onClick={() => setReadingLesson({ ...lesson, label: lesson.chapter_no ? `บทที่ ${lesson.chapter_no}` : lesson.book_name })}
+                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shrink-0 transition"
+                        >
+                          อ่าน
+                        </button>
+                      )}
                     </div>
-
-                    <h3 className="text-xl font-extrabold text-slate-800 mb-2">
-                      บทที่ {lesson.chapter_no}: {lesson.title}
-                    </h3>
-
-                    <div className="bg-slate-50 rounded-2xl p-4 text-sm text-slate-700 leading-relaxed mb-4 whitespace-pre-wrap">
-                      <div className="text-xs font-bold text-slate-500 mb-1">📌 เนื้อหาสำคัญโดยสรุป:</div>
-                      {lesson.summary}
-                    </div>
-
-                    {lesson.mentor_tips && (
-                      <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-4 text-sm text-indigo-950 mb-4 whitespace-pre-wrap">
-                        <div className="text-xs font-bold text-indigo-600 mb-1">💡 Tips แนะแนวสำหรับพี่เลี้ยง:</div>
-                        {lesson.mentor_tips}
+                    {(lesson.summary || lesson.mentor_tips) && (
+                      <div className="mt-2 ml-[3.25rem] space-y-2 text-xs">
+                        {lesson.summary && (
+                          <div className="bg-slate-50 rounded-xl p-3 text-slate-700 whitespace-pre-wrap">
+                            <span className="font-bold text-slate-500">📌 สรุป: </span>{lesson.summary}
+                          </div>
+                        )}
+                        {lesson.mentor_tips && (
+                          <div className="bg-indigo-50/70 rounded-xl p-3 text-indigo-950 whitespace-pre-wrap">
+                            <span className="font-bold text-indigo-600">💡 Tips พี่เลี้ยง: </span>{lesson.mentor_tips}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100">
-                    {lesson.pdf_url && (
-                      <a
-                        href={lesson.pdf_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl text-center shadow-sm transition"
-                      >
-                        📄 เปิดอ่านไฟล์หนังสือ (PDF)
-                      </a>
-                    )}
-                    <button
-                      onClick={() => {
-                        setCareForm(prev => ({
-                          ...prev,
-                          lesson_id: lesson.lesson_id,
-                          activities: prev.activities.includes('สอนบทเรียน') ? prev.activities : [...prev.activities, 'สอนบทเรียน']
-                        }));
-                        setActiveTab('care');
-                        showToast(`เลือก "${lesson.title}" เตรียมบันทึกการดูแลแล้ว`);
-                      }}
-                      className="py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition"
-                    >
-                      ☑️ สอนบทนี้เสร็จแล้ว (ไปหน้าบันทึก)
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
+                {filteredLessons.length === 0 && (
+                  <p className="py-8 text-center text-sm text-slate-500">ไม่เจอบทที่ค้นหา ลองคำอื่นดูนะ</p>
+                )}
+              </div>
             </div>
           </div>
         )}
