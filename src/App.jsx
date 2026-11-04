@@ -36,7 +36,7 @@ function buildLessonList(sheetLessons) {
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyxF8L7G5D9rmZR7PVeR3B4yQbULzAzQG0Dfo1aCQdj-FWqueb5cnelpCnKuTBEk04dpw/exec";
 
 // 🟢 LIFF ID จาก LINE Developers Console (LIFF app ต้องเปิด scope "openid" และ "profile")
-const LIFF_ID = "PUT_YOUR_LIFF_ID_HERE";
+const LIFF_ID = "2012195321-FSV4oLo6";
 const isLiffConfigured = !!LIFF_ID && LIFF_ID !== "PUT_YOUR_LIFF_ID_HERE";
 
 const PREFIX_OPTIONS = ['นาย', 'นางสาว', 'นาง', 'ด.ช.', 'ด.ญ.'];

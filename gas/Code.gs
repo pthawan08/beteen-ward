@@ -2,7 +2,7 @@
 // ใส่ Channel ID ของ LINE Login channel (ตัวเดียวกับที่สร้าง LIFF app)
 // LINE Developers Console > LINE Login channel > Basic settings > Channel ID
 // ============================================================================
-var LINE_CHANNEL_ID = 'PUT_YOUR_LINE_LOGIN_CHANNEL_ID_HERE';
+var LINE_CHANNEL_ID = '2012195321';
 
 // คอลัมน์ที่ห้ามส่งออกไปหน้าเว็บ และห้ามแก้ผ่าน insert/update ทั่วไป
 var PROTECTED_MEMBER_COLUMNS = ['line_uid'];
