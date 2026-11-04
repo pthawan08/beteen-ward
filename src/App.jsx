@@ -532,7 +532,7 @@ export default function App() {
   // User & Auth States
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState('home');
 
   // ตัวเลือกเข้าสู่ระบบ หน่วย ➔ เซลล์ ➔ ชื่อ
   const [selUnit, setSelUnit] = useState('');
@@ -849,7 +849,7 @@ export default function App() {
     }
     setCurrentUser(member);
     setIsLoggedIn(true);
-    setActiveTab('profile');
+    setActiveTab('home');
     showToast(`ยินดีต้อนรับ ${member.nickname} (${getRoleInfo(member.role).label}) 🎉`);
   };
 
@@ -896,7 +896,7 @@ export default function App() {
     setIsLoggedIn(false);
     setIsEditingProfile(false);
     setSelMemberId('');
-    setActiveTab('profile');
+    setActiveTab('home');
   };
 
   const handleSaveProfile = async (e) => {
@@ -1136,6 +1136,176 @@ export default function App() {
   const careAvailableCells = [...new Set(mySheepList.map(m => String(m.cell_group || '').trim()).filter(Boolean))];
   const displayedSheepList = mySheepList.filter(m =>
     careCellFilter === 'ALL' || String(m.cell_group || '').trim() === careCellFilter
+  );
+
+  // ============================================================================
+  // ข้อมูลสำหรับหน้าแรก: วันเกิดวันนี้ / ที่ใกล้จะถึง / น้องที่ควรติดตาม
+  // ============================================================================
+  const daysUntilBirthday = (birthdate) => {
+    const [, m, d] = String(birthdate).split('-').map(Number);
+    if (!m || !d) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let next = new Date(today.getFullYear(), m - 1, d);
+    if (next < today) next = new Date(today.getFullYear() + 1, m - 1, d);
+    return Math.round((next - today) / 86400000);
+  };
+
+  const birthdaysAhead = db.members
+    .filter(m => m.birthdate)
+    .map(m => ({ member: m, days: daysUntilBirthday(m.birthdate) }))
+    .filter(b => b.days !== null && b.days <= 30)
+    .sort((a, b) => a.days - b.days);
+  const birthdaysToday = birthdaysAhead.filter(b => b.days === 0);
+  const birthdaysSoon = birthdaysAhead.filter(b => b.days > 0).slice(0, 5);
+
+  const daysSinceLastCare = (memberId) => {
+    const dates = db.careLogs.filter(l => l.member_id === memberId).map(l => new Date(l.date)).filter(d => !isNaN(d));
+    if (dates.length === 0) return null;
+    return Math.floor((new Date() - Math.max(...dates)) / 86400000);
+  };
+  const sheepNeedingCare = isLeaderOrMentor(currentUser)
+    ? mySheepList
+        .map(m => ({ member: m, days: daysSinceLastCare(m.id) }))
+        .filter(s => s.days === null || s.days > 14)
+        .sort((a, b) => (b.days ?? 9999) - (a.days ?? 9999))
+    : [];
+
+  const openBirthdayCard = (member) => {
+    setSelectedBirthdayPerson(member);
+    const month = Number(String(member.birthdate || '').split('-')[1]);
+    if (month) setSelectedMonth(month);
+    setActiveTab('birthday');
+    window.scrollTo({ top: 0 });
+  };
+
+  const goTab = (tab) => {
+    setActiveTab(tab);
+    window.scrollTo({ top: 0 });
+  };
+
+  // ============================================================================
+  // หน้าแรก
+  // ============================================================================
+  const renderHome = () => (
+    <div className="space-y-5 max-w-xl mx-auto text-left">
+      <div>
+        <p className="text-sm text-slate-500">
+          {new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </p>
+        <h2 className="text-3xl font-extrabold text-slate-900">สวัสดี {currentUser.nickname} 👋</h2>
+      </div>
+
+      {getProfileCompletion(currentUser) < 100 && (
+        <button
+          type="button"
+          onClick={() => setShowWizard(true)}
+          className="w-full p-4 bg-white rounded-2xl shadow-sm text-left"
+        >
+          <div className="flex justify-between text-sm font-bold text-slate-800 mb-1.5">
+            <span>✨ โปรไฟล์ของคุณครบ {getProfileCompletion(currentUser)}%</span>
+            <span>กรอกต่อ ➔</span>
+          </div>
+          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden border border-[#1a1a1a]">
+            <div className="h-full bg-[#c6f432]" style={{ width: `${getProfileCompletion(currentUser)}%` }} />
+          </div>
+        </button>
+      )}
+
+      {birthdaysToday.map(({ member }) => (
+        <div key={member.id} className="p-4 rounded-2xl bg-[#ff8fc7] shadow-md">
+          <div className="flex items-center gap-3">
+            <AvatarDisplay avatar={member.avatar_url} nickname={member.nickname} sizeClass="w-14 h-14" roundedClass="rounded-xl" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold">🎉 วันนี้วันเกิด!</p>
+              <p className="text-xl font-extrabold truncate">
+                {member.id === currentUser.id ? `สุขสันต์วันเกิดนะ ${member.nickname}!` : member.nickname}
+              </p>
+            </div>
+          </div>
+          {member.id !== currentUser.id && (
+            <button type="button" onClick={() => openBirthdayCard(member)} className="mt-3 w-full py-2.5 bg-indigo-600 text-white font-bold text-sm rounded-xl shadow-sm">
+              💌 เขียนคำอวยพร
+            </button>
+          )}
+        </div>
+      ))}
+
+      {sheepNeedingCare.length > 0 && (
+        <div className="p-4 rounded-2xl bg-[#fde047] shadow-md">
+          <div className="flex items-center justify-between mb-2">
+            <p className="font-extrabold">🐑 น้องที่ควรติดตาม ({sheepNeedingCare.length} คน)</p>
+          </div>
+          <div className="space-y-1.5">
+            {sheepNeedingCare.slice(0, 3).map(({ member, days }) => (
+              <div key={member.id} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border-2 border-[#1a1a1a]">
+                <AvatarDisplay avatar={member.avatar_url} nickname={member.nickname} sizeClass="w-8 h-8" roundedClass="rounded-lg" />
+                <span className="flex-1 font-bold text-sm truncate">{member.nickname}</span>
+                <span className="text-xs font-semibold">{days === null ? 'ยังไม่เคยบันทึก' : `ห่าง ${days} วัน`}</span>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => goTab('care')} className="mt-3 w-full py-2.5 bg-indigo-600 text-white font-bold text-sm rounded-xl shadow-sm">
+            ✍️ ไปบันทึกการดูแล
+          </button>
+        </div>
+      )}
+
+      <div className="p-4 rounded-2xl bg-white shadow-md">
+        <p className="font-extrabold mb-2">🎂 วันเกิดที่ใกล้จะถึง</p>
+        {birthdaysSoon.length === 0 ? (
+          <p className="text-sm text-slate-500">ช่วง 30 วันนี้ยังไม่มีใครเกิด ชวนเพื่อนๆ มาใส่วันเกิดกันนะ</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {birthdaysSoon.map(({ member, days }) => (
+              <button key={member.id} type="button" onClick={() => openBirthdayCard(member)} className="w-full flex items-center gap-3 py-2 text-left">
+                <AvatarDisplay avatar={member.avatar_url} nickname={member.nickname} sizeClass="w-9 h-9" roundedClass="rounded-lg" />
+                <span className="flex-1 min-w-0">
+                  <span className="block font-bold text-sm truncate">{member.nickname}</span>
+                  <span className="block text-[11px] text-slate-500">{formatThaiBirthday(member.birthdate)}</span>
+                </span>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[#c6f432] border-2 border-[#1a1a1a] shrink-0">
+                  {days === 1 ? 'พรุ่งนี้!' : `อีก ${days} วัน`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 rounded-2xl bg-[#b9a3ff] shadow-md">
+        <p className="text-xs font-bold mb-1">✨ คำหนุนใจวันนี้</p>
+        <p className="text-sm leading-relaxed">{quote}</p>
+        <button
+          type="button"
+          onClick={() => setQuote(DAILY_QUOTES[Math.floor(Math.random() * DAILY_QUOTES.length)])}
+          className="mt-3 px-3 py-1.5 bg-white text-xs font-bold rounded-lg border-2 border-[#1a1a1a]"
+        >
+          🎲 สุ่มใหม่
+        </button>
+      </div>
+
+      <button type="button" onClick={() => goTab('me')} className="block w-full text-left">
+        <p className="text-xs font-bold text-slate-500 mb-1.5">การ์ดของฉัน</p>
+        <MemberCardPreview member={currentUser} />
+      </button>
+    </div>
+  );
+
+  // เมนูสลับ สมุดพก / บทเรียน (อยู่ในแท็บ "ดูแล" ของเมนูล่าง)
+  const renderCareSwitcher = () => (
+    <div className="flex gap-2 p-1.5 bg-white rounded-2xl border-2 border-[#1a1a1a] max-w-sm">
+      {[['care', '📋 สมุดพก'], ['lessons', '📖 บทเรียน']].map(([tab, label]) => (
+        <button
+          key={tab}
+          type="button"
+          onClick={() => goTab(tab)}
+          className={`flex-1 py-2 rounded-xl text-sm font-bold transition ${activeTab === tab ? 'bg-[#c6f432] border-2 border-[#1a1a1a]' : 'text-slate-500'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 
   // ============================================================================
@@ -1558,7 +1728,7 @@ export default function App() {
       )}
 
       {toast && (
-        <div className={`fixed bottom-5 right-5 left-5 sm:left-auto sm:max-w-md z-50 px-5 py-3 rounded-2xl break-words shadow-xl font-medium text-sm flex items-center gap-2 ${
+        <div className={`fixed bottom-24 right-5 left-5 sm:left-auto sm:max-w-md z-50 px-5 py-3 rounded-2xl break-words shadow-xl font-medium text-sm flex items-center gap-2 ${
           toast.type === 'error' ? 'bg-rose-600 text-white' : toast.type === 'info' ? 'bg-amber-500 text-slate-900' : 'bg-emerald-600 text-white'
         }`}>
           <span>{toast.msg}</span>
@@ -1595,95 +1765,73 @@ export default function App() {
         </Suspense>
       )}
 
-      {/* Top Navigation */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-sm">
-              🐑
-            </div>
-            <div>
-              <h1 className="font-bold text-slate-800 text-base sm:text-lg leading-tight">บ้านของเรา (คอมมูนิตี้แขวง)</h1>
-              <p className="text-xs text-slate-500">{currentUser.unit} • {currentUser.cell_group}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
+      {/* Top bar */}
+      <header className="bg-[#fff7d6]/95 backdrop-blur border-b-2 border-[#1a1a1a] sticky top-0 z-30">
+        <div className="max-w-3xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <button type="button" onClick={() => goTab('home')} className="flex items-center gap-2.5 text-left">
+            <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] flex items-center justify-center text-xl">🐑</span>
+            <span>
+              <span className="block font-extrabold text-base leading-tight">บ้านของเรา</span>
+              <span className="block text-[11px] text-slate-500">{currentUser.unit} • {currentUser.cell_group}</span>
+            </span>
+          </button>
+          <div className="flex items-center gap-2">
             {!isDemoMode && (
               <button
+                type="button"
                 onClick={() => fetchAllData(false)}
                 disabled={loading}
-                className="text-xs px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition"
+                aria-label="รีเฟรชข้อมูล"
+                className={`w-10 h-10 rounded-xl bg-white border-2 border-[#1a1a1a] text-lg ${loading ? 'animate-spin' : ''}`}
               >
-                {loading ? 'กำลังซิงก์...' : '🔄 รีเฟรช'}
+                🔄
               </button>
             )}
-
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-800 text-xs font-bold">
-              <span>{currentUser.nickname}</span>
-              <RoleBadge role={currentUser.role} />
-            </div>
-
-            <button
-              onClick={handleLogout}
-              className="text-xs px-3 py-2 rounded-xl border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-600 font-semibold transition"
-            >
-              สลับชื่อ / ออก
+            <button type="button" onClick={() => goTab('me')} aria-label="การ์ดของฉัน" className="rounded-xl border-2 border-[#1a1a1a] overflow-hidden">
+              <AvatarDisplay avatar={currentUser.avatar_url} nickname={currentUser.nickname} sizeClass="w-9 h-9" roundedClass="rounded-none" />
             </button>
           </div>
         </div>
-
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto border-t border-slate-100 bg-slate-50/60">
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap transition flex items-center gap-1.5 ${
-              activeTab === 'profile' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span>🪪</span> โปรไฟล์ & ชาวแขวง
-          </button>
-
-          <button
-            onClick={() => setActiveTab('birthday')}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap transition flex items-center gap-1.5 ${
-              activeTab === 'birthday' ? 'border-pink-500 text-pink-600 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <span>🎂</span> บอร์ดวันเกิด & ทำการ์ด HBD
-          </button>
-
-          {isLeaderOrMentor(currentUser) && (
-            <>
-              <button
-                onClick={() => setActiveTab('care')}
-                className={`px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap transition flex items-center gap-1.5 ${
-                  activeTab === 'care' ? 'border-emerald-600 text-emerald-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>📋</span> สมุดพกดูแลลูกแกะ
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">ผู้นำ/พล.</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('lessons')}
-                className={`px-4 py-3 text-sm font-semibold border-b-2 whitespace-nowrap transition flex items-center gap-1.5 ${
-                  activeTab === 'lessons' ? 'border-amber-500 text-amber-700 bg-white' : 'border-transparent text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>📖</span> คลังบทเรียนออนไลน์
-                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full">ผู้นำ/พล.</span>
-              </button>
-            </>
-          )}
-        </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      {/* Bottom nav แบบแอป */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-white border-t-2 border-[#1a1a1a] pb-[env(safe-area-inset-bottom)]">
+        <div className="max-w-3xl mx-auto grid px-2 py-1.5" style={{ gridTemplateColumns: `repeat(${isLeaderOrMentor(currentUser) ? 5 : 4}, minmax(0, 1fr))` }}>
+          {[
+            { tab: 'home', icon: '🏠', label: 'หน้าแรก' },
+            { tab: 'people', icon: '👯', label: 'ชาวแขวง' },
+            { tab: 'birthday', icon: '🎂', label: 'วันเกิด' },
+            ...(isLeaderOrMentor(currentUser) ? [{ tab: 'care', icon: '🐑', label: 'ดูแล', also: 'lessons' }] : []),
+            { tab: 'me', icon: '😎', label: 'ฉัน' },
+          ].map(item => {
+            const isActive = activeTab === item.tab || activeTab === item.also;
+            return (
+              <button
+                key={item.tab}
+                type="button"
+                onClick={() => goTab(item.tab)}
+                className="flex flex-col items-center gap-0.5 py-1"
+              >
+                <span className={`w-12 h-8 flex items-center justify-center rounded-xl text-lg transition ${
+                  isActive ? 'bg-[#c6f432] border-2 border-[#1a1a1a] -translate-y-0.5' : ''
+                }`}>
+                  {item.icon}
+                </span>
+                <span className={`text-[11px] ${isActive ? 'font-extrabold' : 'text-slate-500'}`}>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <main className="max-w-6xl mx-auto px-4 pt-5 pb-28">
         
+        {activeTab === 'home' && renderHome()}
+
         {/* =====================================================================
-            TAB 1: โปรไฟล์ชาวแขวง & ทำเนียบสมาชิก
+            TAB: ฉัน (การ์ดของฉัน + แก้โปรไฟล์)
            ===================================================================== */}
-        {activeTab === 'profile' && (
+        {activeTab === 'me' && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
@@ -1972,7 +2120,21 @@ export default function App() {
               </div>
             </div>
 
-            {/* ทำเนียบสมาชิก */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white border-2 border-[#1a1a1a] text-sm font-bold hover:bg-rose-50"
+            >
+              🔁 สลับชื่อ / ออกจากระบบ
+            </button>
+          </div>
+        )}
+
+        {/* =====================================================================
+            TAB: ชาวแขวง (ทำเนียบสมาชิก)
+           ===================================================================== */}
+        {activeTab === 'people' && (
+          <div className="space-y-8">
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                 <div>
@@ -2296,6 +2458,7 @@ export default function App() {
            ===================================================================== */}
         {activeTab === 'care' && isLeaderOrMentor(currentUser) && (
           <div className="space-y-8">
+            {renderCareSwitcher()}
             <div>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
@@ -2581,6 +2744,7 @@ export default function App() {
            ===================================================================== */}
         {activeTab === 'lessons' && isLeaderOrMentor(currentUser) && (
           <div className="space-y-6">
+            {renderCareSwitcher()}
             <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl p-6 sm:p-8 text-white shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <span className="text-xs uppercase font-bold tracking-wider bg-white/20 px-3 py-1 rounded-full">
