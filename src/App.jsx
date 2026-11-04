@@ -1322,7 +1322,7 @@ export default function App() {
         {renderAddMemberModal()}
 
         {toast && (
-          <div className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-xl font-medium text-sm ${
+          <div className={`fixed bottom-5 right-5 left-5 sm:left-auto sm:max-w-md z-50 px-5 py-3 rounded-2xl break-words shadow-xl font-medium text-sm ${
             toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
           }`}>
             {toast.msg}
@@ -1541,7 +1541,7 @@ export default function App() {
       )}
 
       {toast && (
-        <div className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-2xl shadow-xl font-medium text-sm flex items-center gap-2 ${
+        <div className={`fixed bottom-5 right-5 left-5 sm:left-auto sm:max-w-md z-50 px-5 py-3 rounded-2xl break-words shadow-xl font-medium text-sm flex items-center gap-2 ${
           toast.type === 'error' ? 'bg-rose-600 text-white' : toast.type === 'info' ? 'bg-amber-500 text-slate-900' : 'bg-emerald-600 text-white'
         }`}>
           <span>{toast.msg}</span>

@@ -4,6 +4,12 @@
 // ============================================================================
 var LINE_CHANNEL_ID = '2012195321';
 
+// กดรันฟังก์ชันนี้ใน Apps Script 1 ครั้ง เพื่ออนุญาตให้สคริปต์ส่งคำขอไปเช็กกับ LINE ได้
+function authorizeLineCheck() {
+  var res = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', { method: 'post', payload: { id_token: 'test', client_id: LINE_CHANNEL_ID }, muteHttpExceptions: true });
+  Logger.log('เชื่อมต่อ LINE ได้แล้ว (HTTP ' + res.getResponseCode() + ')');
+}
+
 // คอลัมน์ที่ห้ามส่งออกไปหน้าเว็บ และห้ามแก้ผ่าน insert/update ทั่วไป
 var PROTECTED_MEMBER_COLUMNS = ['line_uid'];
 
