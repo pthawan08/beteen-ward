@@ -233,7 +233,7 @@ function rowToObject(ss, headers, row, excludeColumns) {
     if (header !== "" && exclude.indexOf(header) === -1) {
       // Format dates correctly to YYYY-MM-DD to match React input type="date"
       var cellValue = row[j];
-      if (cellValue instanceof Date) {
+      if (Object.prototype.toString.call(cellValue) === '[object Date]') {
         var tz = ss.getSpreadsheetTimeZone();
         cellValue = Utilities.formatDate(cellValue, tz, "yyyy-MM-dd");
       }

@@ -155,6 +155,12 @@ function parseBirthdate(value) {
   const raw = String(value || '').trim();
   if (!raw || /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
 
+  // วันที่แบบเวลาสากล เช่น "1999-11-07T17:00:00.000Z" → แปลงเป็นวันที่ตามเวลาไทย
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    const d = new Date(raw);
+    return isNaN(d) ? raw : d.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  }
+
   let day, month, year;
   const numeric = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
   if (numeric) {
@@ -199,6 +205,17 @@ function normalizeMembers(rawMembers = []) {
         _missingSheetId: true,
       };
     });
+}
+
+// ชื่อไทยไม่มีเว้นวรรคระหว่างพยางค์ มือถือเลยตัดบรรทัดกลางชื่อได้
+// ให้ตัดบรรทัดได้เฉพาะตรงช่องว่าง (ระหว่างชื่อกับนามสกุล)
+function NoBreakWords({ text }) {
+  return String(text).split(/\s+/).filter(Boolean).map((word, i) => (
+    <React.Fragment key={i}>
+      {i > 0 && ' '}
+      <span className="inline-block whitespace-nowrap">{word}</span>
+    </React.Fragment>
+  ));
 }
 
 // แสดงรูปโปรไฟล์จริงเท่านั้น หากยังไม่มีรูปจะขึ้นกรอบ "รออัปรูป"
@@ -1704,9 +1721,12 @@ export default function App() {
                             {currentUser.unit} • {currentUser.cell_group}
                           </span>
                         </div>
-                        <h2 className="text-2xl sm:text-3xl font-extrabold">
-                          {currentUser.nickname} {formatFullName(currentUser) ? `(${formatFullName(currentUser)})` : ''}
-                        </h2>
+                        <h2 className="text-2xl sm:text-3xl font-extrabold">{currentUser.nickname}</h2>
+                        {formatFullName(currentUser) && (
+                          <p className="text-base font-semibold opacity-90">
+                            <NoBreakWords text={formatFullName(currentUser)} />
+                          </p>
+                        )}
                         <p className="text-sm opacity-90">รหัสสมาชิก: {currentUser.id} • เกิดวันที่: {currentUser.birthdate ? formatThaiBirthday(currentUser.birthdate) : '-'}</p>
                       </div>
                     </div>
@@ -2340,7 +2360,7 @@ export default function App() {
                                   <h4 className="font-bold text-slate-800">{sheep.nickname}</h4>
                                   <RoleBadge role={sheep.role} />
                                 </div>
-                                <p className="text-[11px] text-slate-500">{formatFullName(sheep)}</p>
+                                <p className="text-[11px] text-slate-500"><NoBreakWords text={formatFullName(sheep)} /></p>
                                 <p className="text-[11px] text-indigo-600 font-semibold">{sheep.unit} • {sheep.cell_group}</p>
                               </div>
                             </div>
